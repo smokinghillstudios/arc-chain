@@ -94,7 +94,7 @@ class BoardPainter extends CustomPainter {
     canvas.scale(scale);
 
     final startInfo = {for (final ch in board.chains) ch.start.key: ch};
-    final endColors = {for (final ch in board.chains) ch.end.key: ch.color};
+    final endInfo = {for (final ch in board.chains) ch.end.key: ch};
 
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
@@ -103,17 +103,31 @@ class BoardPainter extends CustomPainter {
         final isRotatable = type == 'A' || type == 'B';
         final key = '$r,$c';
         final startCh = startInfo[key];
-        final endColor = endColors[key];
+        final endCh = endInfo[key];
+        final connected = endCh?.success ?? false;
 
         final rrect = RRect.fromRectAndRadius(
             Rect.fromLTWH(px + 2, py + 2, kCell - 4, kCell - 4),
             const Radius.circular(9));
 
-        if (startCh != null || endColor != null) {
-          final fill = startCh != null
-              ? startCh.color.withValues(alpha: 0.35)
-              : endColor!.withValues(alpha: 0.22);
+        if (startCh != null || endCh != null) {
+          final baseColor = startCh?.color ?? endCh!.color;
+          final fill = connected
+              ? baseColor.withValues(alpha: 0.55)
+              : baseColor.withValues(alpha: startCh != null ? 0.35 : 0.22);
           canvas.drawRRect(rrect, Paint()..color = fill);
+          if (connected) {
+            // Acende a célula de chegada — anel brilhante marcando a
+            // cadeia como completa, além do asterisco (ver _drawEndMarker).
+            canvas.drawRRect(
+                rrect,
+                Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = kCell * 0.06
+                  ..color = baseColor
+                  ..maskFilter =
+                      MaskFilter.blur(BlurStyle.normal, kCell * 0.08));
+          }
         } else {
           final grad = LinearGradient(
             begin: Alignment.topCenter,
@@ -132,8 +146,8 @@ class BoardPainter extends CustomPainter {
                 ..color = const Color(0xFF3A5F7A).withValues(alpha: 0.12));
         }
 
-        if (endColor != null) {
-          _drawEndMarker(canvas, px, py, endColor);
+        if (endCh != null) {
+          _drawEndMarker(canvas, px, py, endCh.color, lit: connected);
         } else if (startCh != null) {
           _drawDirArrow(canvas, px, py, startCh.startDir, startCh.color);
         } else {
@@ -244,13 +258,23 @@ class BoardPainter extends CustomPainter {
   }
 
   /// Asterisco de 8 pontas (o '✳' do protótipo), desenhado à mão para
-  /// não depender da fonte de emojis.
-  void _drawEndMarker(Canvas canvas, double px, double py, Color color) {
+  /// não depender da fonte de emojis. Quando [lit] (cadeia completa), ganha
+  /// um brilho por trás e fica maior/mais grosso — o indicativo de "conectado".
+  void _drawEndMarker(Canvas canvas, double px, double py, Color color,
+      {bool lit = false}) {
     final cx = px + kCell / 2, cy = py + kCell / 2;
-    const radius = kCell * 0.22;
+    final radius = kCell * (lit ? 0.28 : 0.22);
+    if (lit) {
+      canvas.drawCircle(
+          Offset(cx, cy),
+          radius * 1.3,
+          Paint()
+            ..color = color.withValues(alpha: 0.55)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, kCell * 0.14));
+    }
     final paint = Paint()
-      ..color = color
-      ..strokeWidth = kCell * 0.08
+      ..color = lit ? Colors.white : color
+      ..strokeWidth = kCell * (lit ? 0.1 : 0.08)
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 4; i++) {
       final a = i * math.pi / 4;

@@ -29,71 +29,50 @@ class HudTop extends StatelessWidget {
           SizedBox(
             width: 68 * scale,
             child: _HudCard(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.touch_app_rounded,
-                      size: 14, color: Color(0xFF90A0AA)),
-                  const SizedBox(height: 3),
-                  Text(
-                    '$remaining',
-                    style: TextStyle(
-                      fontSize: 29,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                      color: low
-                          ? const Color(0xFFFF8C42)
-                          : const Color(0xFF536F84),
-                    ),
+              child: Center(
+                child: Text(
+                  '$remaining',
+                  style: TextStyle(
+                    fontSize: 29,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                    color: low
+                        ? const Color(0xFFFF8C42)
+                        : const Color(0xFF536F84),
                   ),
-                ],
+                ),
               ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _HudCard(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${level.id}',
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                      color: Color(0xFF536F84),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (var i = 0; i < level.chains; i++)
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 1.5),
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: chainColors[i],
-                              shape: BoxShape.circle,
-                            ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < level.chains; i++)
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4 * scale),
+                        child: Container(
+                          // Tamanho fixo por escala do HUD — não encolhe com
+                          // menos cores, só o grupo fica mais estreito.
+                          width: 22 * scale,
+                          height: 22 * scale,
+                          decoration: BoxDecoration(
+                            color: chainColors[i],
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: chainColors[i].withValues(alpha: 0.35),
+                                blurRadius: 4 * scale,
+                              ),
+                            ],
                           ),
                         ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${level.cols}×${level.rows}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF90A0AA),
-                        ),
                       ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

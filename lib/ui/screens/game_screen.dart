@@ -367,11 +367,7 @@ class _GameScreenState extends State<GameScreen>
     // Deixa o confete brilhar antes do diálogo de vitória.
     await Future.delayed(const Duration(milliseconds: 1100));
     if (!mounted || !_showNext) return; // fase reiniciada nesse meio tempo
-    final action = await showVictoryDialog(
-      context,
-      stars: _stars,
-      taps: _flipCount,
-    );
+    final action = await showVictoryDialog(context, stars: _stars);
     if (!mounted) return;
     switch (action) {
       case VictoryAction.retry:
@@ -447,8 +443,8 @@ class _GameScreenState extends State<GameScreen>
   }
 
   /// Toques esgotados: diálogo único de derrota com oferta de vídeo
-  /// (+3 toques) e as ações tentar de novo / voltar ao mapa — espelhando o
-  /// `_DefeatDialog` do ARCO.
+  /// (+[kDefeatExtraTaps] toques) e as ações tentar de novo / voltar ao
+  /// mapa — espelhando o `_DefeatDialog` do ARCO.
   Future<void> _offerExtraTaps() async {
     if (!mounted || !_boardLocked || _showNext) return;
 
@@ -457,7 +453,7 @@ class _GameScreenState extends State<GameScreen>
     switch (action) {
       case DefeatAction.continueWithVideo:
         setState(() {
-          _extraTaps += 3;
+          _extraTaps += kDefeatExtraTaps;
           _boardLocked = false;
         });
       case DefeatAction.retry:

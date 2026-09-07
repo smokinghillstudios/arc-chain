@@ -13,9 +13,10 @@ Future<bool?> showPhaseDetailDialog(BuildContext context,
   );
 }
 
-/// Porte do detalhe de fase do ARCO — sem palavras, só números/ícones:
-/// cabeçalho com o número da fase, previews de desafio (cadeias, tabuleiro,
-/// toques, toques para 3 estrelas) e as ações jogar/voltar.
+/// Porte do detalhe de fase do ARCO — sem palavras, só números:
+/// cabeçalho com o número da fase, as cores do desafio, uma escada de
+/// estrelas (1★/2★/3★, cada uma com seu teto de toques) e as ações
+/// jogar/voltar.
 class PhaseDetailDialog extends StatelessWidget {
   final LevelDef level;
   const PhaseDetailDialog({super.key, required this.level});
@@ -53,82 +54,27 @@ class PhaseDetailDialog extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
-              child: IntrinsicHeight(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _InfoPreview(
-                      icon: Icons.link_rounded,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < level.chains; i++)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 2.5),
-                              child: Container(
-                                width: 14,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: chainColors[i],
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    const _ObjectiveDivider(),
-                    const SizedBox(width: 18),
-                    _InfoPreview(
-                      icon: Icons.grid_4x4_rounded,
-                      child: Text(
-                        '${level.cols}×${level.rows}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF536F84),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    const _ObjectiveDivider(),
-                    const SizedBox(width: 18),
-                    _InfoPreview(
-                      icon: Icons.touch_app_rounded,
-                      child: Text(
-                        '≤ ${board.maxTaps}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF536F84),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.star_rounded,
-                      size: 13, color: Color(0xFFC79A0A)),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${board.minTaps}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFC79A0A),
+                  for (var i = 0; i < level.chains; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3.5),
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: chainColors[i],
+                          shape: BoxShape.circle,
+                        ),
+                      ),
                     ),
-                  ),
                 ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(30, 20, 30, 0),
+              child: _StarLadder(board: board),
             ),
             // Ações: voltar (seta) e jogar (triângulo), sem texto.
             Padding(
@@ -181,41 +127,97 @@ class PhaseDetailDialog extends StatelessWidget {
   }
 }
 
-/// Valor + ícone em coluna, como os previews de objetivo do ARCO.
-class _InfoPreview extends StatelessWidget {
-  final IconData icon;
-  final Widget child;
-  const _InfoPreview({required this.icon, required this.child});
+/// Escada de estrelas: uma linha por patamar (1★/2★/3★), cada uma com o
+/// teto de toques daquele patamar — mesma fonte de verdade de
+/// `GameScreen._computeStars`. Sem símbolo nem rótulo, só o número.
+class _StarLadder extends StatelessWidget {
+  final GameBoard board;
+  const _StarLadder({required this.board});
 
   @override
   Widget build(BuildContext context) {
+    final threeStars = board.minTaps;
+    final twoStars =
+        (board.minTaps + (board.maxTaps - board.minTaps) * 0.5).floor();
+    final oneStar = board.maxTaps;
+    final rows = [(1, oneStar), (2, twoStars), (3, threeStars)];
+
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(height: 26, child: Center(child: child)),
-        const SizedBox(height: 5),
-        Icon(icon, size: 12, color: const Color(0xFF90A0AA)),
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) const SizedBox(height: 9),
+          _StarLadderRow(
+            filled: rows[i].$1,
+            value: rows[i].$2,
+            emphasize: i == rows.length - 1,
+          ),
+        ],
       ],
     );
   }
 }
 
-/// Barra vertical fina que separa os previews de desafio — só do topo até o
-/// fim da linha de valores (26px), sem descer até a linha do ícone.
-class _ObjectiveDivider extends StatelessWidget {
-  const _ObjectiveDivider();
+class _StarLadderRow extends StatelessWidget {
+  final int filled;
+  final int value;
+  final bool emphasize;
+  const _StarLadderRow(
+      {required this.filled, required this.value, required this.emphasize});
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Container(
-        width: 1.5,
-        height: 26,
-        color: ink.withValues(alpha: 0.14),
-      ),
+    return Row(
+      children: [
+        for (var i = 0; i < 3; i++)
+          Padding(
+            padding: const EdgeInsets.only(right: 1),
+            child: Icon(
+              i < filled ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 15,
+              color: i < filled
+                  ? const Color(0xFFC79A0A)
+                  : const Color(0xFFC79A0A).withValues(alpha: 0.3),
+            ),
+          ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: CustomPaint(painter: _DottedLinePainter(), size: const Size(double.infinity, 1)),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: emphasize ? 19 : 17,
+            fontWeight: FontWeight.w900,
+            color: emphasize ? headerDark : ink,
+          ),
+        ),
+      ],
     );
   }
+}
+
+/// Linha pontilhada fina, ligando as estrelas ao número na escada.
+class _DottedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dashWidth = 3.0;
+    const dashGap = 3.0;
+    final paint = Paint()
+      ..color = ink.withValues(alpha: 0.14)
+      ..strokeWidth = 1.5;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
+      x += dashWidth + dashGap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DottedLinePainter oldDelegate) => false;
 }
 
 /// Triângulo branco (▶) usado no botão "jogar" no lugar do ícone padrão.

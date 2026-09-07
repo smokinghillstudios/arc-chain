@@ -12,6 +12,11 @@ import '../widgets/hex_badge.dart';
 /// Segundos do anúncio simulado (fallback quando o vídeo não carrega).
 const kSimulatedAdSeconds = 5;
 
+/// Toques extras oferecidos a quem assiste o vídeo após perder — mostrado
+/// no diálogo de derrota e efetivamente concedido pelo chamador
+/// (`GameScreen._offerExtraTaps`).
+const kDefeatExtraTaps = 5;
+
 /// Tamanho dos botões quadrados de ação nos diálogos de vitória/derrota e no
 /// menu de configurações — porte de `kDialogButtonSize` do ARCO.
 const double kDialogButtonSize = 52.8;
@@ -31,20 +36,18 @@ enum VictoryAction {
 Future<VictoryAction?> showVictoryDialog(
   BuildContext context, {
   required int stars,
-  required int taps,
 }) {
   return showDialog<VictoryAction>(
     context: context,
     barrierDismissible: false,
     barrierColor: const Color(0xFF4A7FA5).withValues(alpha: 0.88),
-    builder: (_) => _VictoryDialog(stars: stars, taps: taps),
+    builder: (_) => _VictoryDialog(stars: stars),
   );
 }
 
 class _VictoryDialog extends StatelessWidget {
   final int stars;
-  final int taps;
-  const _VictoryDialog({required this.stars, required this.taps});
+  const _VictoryDialog({required this.stars});
 
   @override
   Widget build(BuildContext context) {
@@ -78,23 +81,6 @@ class _VictoryDialog extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(height: 96, child: _VictoryStars(stars: stars)),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.touch_app_rounded,
-                              size: 16, color: Color(0xFFAAAAAA)),
-                          const SizedBox(width: 6),
-                          Text(
-                            '$taps',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFAAAAAA),
-                            ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 22),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -355,7 +341,7 @@ class _ConfettiPainter extends CustomPainter {
 
 /// Ação escolhida no diálogo de derrota.
 enum DefeatAction {
-  /// Assistiu ao vídeo: +3 toques, mesma fase continua.
+  /// Assistiu ao vídeo: +[kDefeatExtraTaps] toques, mesma fase continua.
   continueWithVideo,
 
   /// Recomeçar a fase do zero.
@@ -366,8 +352,8 @@ enum DefeatAction {
 }
 
 /// Diálogo de derrota — cabeçalho vermelho com um "×", oferta de vídeo por
-/// +3 toques (mesma caixa + selo hexagonal do ARCO) e as ações tentar de
-/// novo / voltar ao mapa.
+/// +[kDefeatExtraTaps] toques (mesma caixa + selo hexagonal do ARCO) e as
+/// ações tentar de novo / voltar ao mapa.
 Future<DefeatAction?> showDefeatDialog(BuildContext context) {
   return showDialog<DefeatAction>(
     context: context,
@@ -490,7 +476,7 @@ class _DefeatDialogState extends State<_DefeatDialog> {
                                       size: 22, color: Color(0xFF2C2C2C)),
                                   const SizedBox(width: 6),
                                   const Text(
-                                    '3',
+                                    '$kDefeatExtraTaps',
                                     style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.w900,

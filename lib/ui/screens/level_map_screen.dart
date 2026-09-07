@@ -20,10 +20,14 @@ import 'game_screen.dart';
 /// (release mantém a progressão normal) — mesma decisão do ARCO.
 bool debugUnlockAllLevels = kDebugMode;
 
-int get _totalLevels => levels.length;
+/// Quantas fases o horizonte cresce de cada vez que o jogador chega perto
+/// do topo do que já foi desenhado (ver `_growHorizon`).
+const int _kHorizonChunk = 50;
 
 /// Seleção de fases estilo ARCO: trilha serpenteante com corda de cânhamo
-/// e nós circulares de baixo para cima.
+/// e nós circulares de baixo para cima. Sem fim — a trilha cresce sozinha
+/// conforme o jogador rola (ver `_horizonLevels`/`_growHorizon`), em vez de
+/// ter um total de fases fixo.
 class LevelMapScreen extends StatefulWidget {
   const LevelMapScreen({super.key});
 
@@ -34,6 +38,11 @@ class LevelMapScreen extends StatefulWidget {
 class _LevelMapScreenState extends State<LevelMapScreen> {
   final _scroll = ScrollController();
 
+  /// Até onde a trilha já foi desenhada/testada por toque — cresce sozinho
+  /// conforme o jogador rola perto do topo (ver `_growHorizon`). Começa
+  /// generoso o bastante pra cobrir o progresso atual mais uma folga.
+  late int _horizonLevels;
+
   /// Estado local do botão de música do cabeçalho (a fonte de verdade é
   /// `Music.instance.enabled`).
   late bool _musicOn = Music.instance.enabled;
@@ -41,9 +50,11 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
   Map<int, int> get _stars => Progress.instance.best;
 
   /// Fases concluídas em sequência a partir da 1 (progressão da trilha).
+  /// Sem teto real — só para no primeiro buraco de progresso; o `1 << 20`
+  /// é só uma trava de segurança contra dado salvo corrompido.
   int get _completedStreak {
     var n = 0;
-    while (n < _totalLevels && (_stars[n + 1] ?? 0) > 0) {
+    while (n < (1 << 20) && (_stars[n + 1] ?? 0) > 0) {
       n++;
     }
     return n;
@@ -64,15 +75,19 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
   @override
   void initState() {
     super.initState();
+    _horizonLevels = math.max(100, _completedStreak + 30);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
     // Trava a rolagem para nunca revelar o vazio acima da nuvem de fim de
-    // trilha (ver `cloudTopY`/`_minScrollOffset`).
+    // trilha, e cresce o horizonte quando chega perto do topo (ver
+    // `cloudTopY`/`_minScrollOffset`/`_growHorizon`).
     _scroll.addListener(_clampScroll);
+    _scroll.addListener(_maybeGrowHorizon);
   }
 
   @override
   void dispose() {
     _scroll.removeListener(_clampScroll);
+    _scroll.removeListener(_maybeGrowHorizon);
     _scroll.dispose();
     super.dispose();
   }
@@ -82,8 +97,8 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
   /// (nada) acima da nuvem, o que não deve acontecer.
   double get _minScrollOffset {
     final width = MediaQuery.sizeOf(context).width;
-    final mapSize = Size(width, kMapHeight);
-    final ropeEnd = _slotPosition(mapSize, _totalSlots);
+    final mapSize = Size(width, mapHeightFor(_horizonLevels));
+    final ropeEnd = _slotPosition(mapSize, totalSlotsFor(_horizonLevels));
     return cloudTopY(mapSize, ropeEnd).clamp(0.0, double.infinity);
   }
 
@@ -95,6 +110,32 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
     }
   }
 
+  /// Estende a trilha (mais `_kHorizonChunk` fases) quando o jogador rola
+  /// perto do topo do que já foi desenhado — a trilha "infinita" nunca
+  /// precisa de um total de fases predefinido, só cresce sob demanda.
+  void _maybeGrowHorizon() {
+    if (!_scroll.hasClients) return;
+    final viewport = _scroll.position.viewportDimension;
+    // Margem de ~2 telas antes do topo atual — dá tempo de crescer antes
+    // do jogador realmente alcançar o fim do que já existe.
+    if (_scroll.offset > _minScrollOffset + viewport * 2) return;
+    _growHorizon();
+  }
+
+  void _growHorizon() {
+    final oldHeight = mapHeightFor(_horizonLevels);
+    setState(() => _horizonLevels += _kHorizonChunk);
+    final deltaHeight = mapHeightFor(_horizonLevels) - oldHeight;
+    // A trilha é ancorada pelo fim (fase 1 fica perto da base do canvas),
+    // então crescer o canvas empurra a coordenada Y de tudo que já existia
+    // pra baixo, na mesma quantidade — compensa a rolagem pelo mesmo tanto
+    // pra manter exatamente o que já estava na tela, sem pulo visual.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      _scroll.jumpTo(_scroll.offset + deltaHeight);
+    });
+  }
+
   void _toggleMusic() {
     setState(() => _musicOn = !_musicOn);
     Music.instance.enabled = _musicOn;
@@ -103,8 +144,8 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
 
   void _scrollToCurrent() {
     if (!_scroll.hasClients) return;
-    final current = (_completedStreak + 1).clamp(1, _totalLevels);
-    final nodeY = kMapHeight - 110 - levelSlot(current - 1) * 78.0;
+    final current = (_completedStreak + 1).clamp(1, _horizonLevels);
+    final nodeY = mapHeightFor(_horizonLevels) - 110 - levelSlot(current - 1) * 78.0;
     final viewport = _scroll.position.viewportDimension;
     _scroll.jumpTo(
       (nodeY - viewport * 0.55)
@@ -113,7 +154,7 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
   }
 
   Future<void> _openLevel(int level) async {
-    final def = levels[level - 1];
+    final def = levelForId(level);
     final play = await showPhaseDetailDialog(context, level: def);
     if (play != true || !mounted) return;
     await Navigator.of(context).push(
@@ -124,10 +165,11 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
 
   void _onTapUp(TapUpDetails details) {
     final local = details.localPosition;
-    final mapSize = Size(MediaQuery.sizeOf(context).width, kMapHeight);
+    final mapSize =
+        Size(MediaQuery.sizeOf(context).width, mapHeightFor(_horizonLevels));
 
     // Paradas de vídeo primeiro (ficam entre os nós).
-    final cps = checkpointPositions(mapSize);
+    final cps = checkpointPositions(mapSize, _horizonLevels);
     for (var k = 1; k <= cps.length; k++) {
       if ((local - cps[k - 1]).distance <= 30) {
         _openCheckpoint(k);
@@ -135,8 +177,8 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
       }
     }
 
-    final positions = levelNodePositions(mapSize);
-    for (var i = 0; i < _totalLevels; i++) {
+    final positions = levelNodePositions(mapSize, _horizonLevels);
+    for (var i = 0; i < _horizonLevels; i++) {
       if ((local - positions[i]).distance <= 34) {
         final level = i + 1;
         if (_phaseUnlocked(level)) _openLevel(level);
@@ -193,13 +235,17 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
                   onTapUp: _onTapUp,
                   child: SizedBox(
                     width: double.infinity,
-                    height: kMapHeight,
-                    child: CustomPaint(
-                      painter: LevelMapPainter(
-                        completedStreak: _completedStreak,
-                        stars: Map.of(_stars),
-                        checkpoints: Set.of(_checkpoints),
-                        unlockAll: debugUnlockAllLevels,
+                    height: mapHeightFor(_horizonLevels),
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: LevelMapPainter(
+                          completedStreak: _completedStreak,
+                          scroll: _scroll,
+                          horizonLevels: _horizonLevels,
+                          stars: Map.of(_stars),
+                          checkpoints: Set.of(_checkpoints),
+                          unlockAll: debugUnlockAllLevels,
+                        ),
                       ),
                     ),
                   ),
@@ -216,11 +262,14 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
 /// A cada [kCheckpointEvery] fases há uma parada de vídeo obrigatória na
 /// corda (entre a fase 5k e a 5k+1).
 const int kCheckpointEvery = 5;
-int get kCheckpointCount => (_totalLevels - 1) ~/ kCheckpointEvery;
+int checkpointCountFor(int totalLevels) => (totalLevels - 1) ~/ kCheckpointEvery;
 
 /// A trilha é uma sequência de "slots" igualmente espaçados: fases e
-/// paradas de vídeo ocupam cada uma o seu slot.
-int get _totalSlots => _totalLevels + kCheckpointCount;
+/// paradas de vídeo ocupam cada uma o seu slot. Parametrizado pelo
+/// horizonte atual da tela (não há um total de fases fixo — a trilha
+/// cresce sob demanda, ver `_LevelMapScreenState._growHorizon`).
+int totalSlotsFor(int totalLevels) =>
+    totalLevels + checkpointCountFor(totalLevels);
 
 /// Slot da fase i (0-based): desloca 1 slot a cada parada anterior.
 int levelSlot(int i) => i + i ~/ kCheckpointEvery;
@@ -228,7 +277,8 @@ int levelSlot(int i) => i + i ~/ kCheckpointEvery;
 /// Slot da parada de vídeo k (1+): logo após a fase 5k.
 int _checkpointSlot(int k) => levelSlot(k * kCheckpointEvery - 1) + 1;
 
-final double kMapHeight = 110 + (_totalSlots - 1) * 78.0 + 150;
+double mapHeightFor(int totalLevels) =>
+    110 + (totalSlotsFor(totalLevels) - 1) * 78.0 + 150;
 
 /// Posição de um slot: onda senoidal com um segundo harmônico leve — a
 /// trilha flui em curvas largas e orgânicas (mesma fórmula do ARCO).
@@ -244,18 +294,20 @@ Offset _slotPosition(Size size, int slot) {
 }
 
 /// Posição de cada nó de fase (compartilhada entre pintura e hit-test).
-List<Offset> levelNodePositions(Size size) =>
-    [for (var i = 0; i < _totalLevels; i++) _slotPosition(size, levelSlot(i))];
+List<Offset> levelNodePositions(Size size, int totalLevels) =>
+    [for (var i = 0; i < totalLevels; i++) _slotPosition(size, levelSlot(i))];
 
 /// Posições das paradas de vídeo (compartilhada entre pintura e hit-test).
-List<Offset> checkpointPositions(Size size) => [
-      for (var k = 1; k <= kCheckpointCount; k++)
+List<Offset> checkpointPositions(Size size, int totalLevels) => [
+      for (var k = 1; k <= checkpointCountFor(totalLevels); k++)
         _slotPosition(size, _checkpointSlot(k)),
     ];
 
 /// Todos os slots em ordem — a corda atravessa todos.
-List<Offset> _allSlotPositions(Size size) =>
-    [for (var s = 0; s < _totalSlots; s++) _slotPosition(size, s)];
+List<Offset> _allSlotPositions(Size size, int totalLevels) => [
+      for (var s = 0; s < totalSlotsFor(totalLevels); s++)
+        _slotPosition(size, s),
+    ];
 
 /// Y do topo do retângulo branco da nuvem de fim de trilha — mesma conta
 /// usada por [LevelMapPainter._paintEndCloud] e por
@@ -273,6 +325,14 @@ class LevelMapPainter extends CustomPainter {
   /// Fases concluídas em sequência (a atual é a seguinte).
   final int completedStreak;
 
+  /// Controller do scroll do mapa — usado tanto para repintar a cada
+  /// rolagem quanto para saber qual trecho está visível (ver [paint]).
+  final ScrollController scroll;
+
+  /// Até onde a trilha existe agora (cresce sozinha conforme o jogador
+  /// rola — ver `_LevelMapScreenState._horizonLevels`).
+  final int horizonLevels;
+
   /// Estrelas (1–3) por fase concluída.
   final Map<int, int> stars;
 
@@ -284,10 +344,12 @@ class LevelMapPainter extends CustomPainter {
 
   LevelMapPainter({
     required this.completedStreak,
+    required this.scroll,
+    required this.horizonLevels,
     this.stars = const {},
     this.checkpoints = const {},
     this.unlockAll = false,
-  });
+  }) : super(repaint: scroll);
 
   /// Mesma regra de liberação usada no hit-test da tela.
   bool _phaseUnlocked(int level) {
@@ -301,11 +363,24 @@ class LevelMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final nodes = levelNodePositions(size);
-    final slots = _allSlotPositions(size);
-    _paintHexBackground(canvas, size, slots);
+    // Janela visível (mais uma margem de folga) — o mapa inteiro chega a
+    // milhares de pixels de altura, então só vale a pena desenhar
+    // hexágonos/corda/nós perto do que está realmente na tela. Lido do
+    // controller a cada chamada (o `repaint: scroll` do construtor garante
+    // que paint() roda de novo a cada tick de rolagem).
+    const margin = 300.0;
+    final viewTop = scroll.hasClients ? scroll.offset : 0.0;
+    final viewHeight =
+        scroll.hasClients ? scroll.position.viewportDimension : size.height;
+    final visibleTop = viewTop - margin;
+    final visibleBottom = viewTop + viewHeight + margin;
+    bool inView(double y) => y >= visibleTop && y <= visibleBottom;
 
-    final current = (completedStreak + 1).clamp(1, _totalLevels);
+    final nodes = levelNodePositions(size, horizonLevels);
+    final slots = _allSlotPositions(size, horizonLevels);
+    _paintHexBackground(canvas, size, slots, visibleTop, visibleBottom);
+
+    final current = (completedStreak + 1).clamp(1, horizonLevels);
 
     // Corda de cânhamo atravessando TODOS os slots, mais um trecho extra
     // além da última fase, num slot sem nó nenhum — é ali, livre de
@@ -313,7 +388,7 @@ class LevelMapPainter extends CustomPainter {
     // _paintEndCloud); a última fase nunca fica coberta por ela.
     // Spline Catmull-Rom: a tangente é contínua ao atravessar cada nó — a
     // corda flui em curvas suaves.
-    final ropeSlots = [...slots, _slotPosition(size, _totalSlots)];
+    final ropeSlots = [...slots, _slotPosition(size, totalSlotsFor(horizonLevels))];
     final path = Path()..moveTo(ropeSlots[0].dx, ropeSlots[0].dy);
     for (var i = 0; i < ropeSlots.length - 1; i++) {
       final p0 = ropeSlots[i == 0 ? 0 : i - 1];
@@ -324,13 +399,14 @@ class LevelMapPainter extends CustomPainter {
       final c2 = p2 - (p3 - p1) / 6;
       path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
     }
-    _paintRope(canvas, path);
+    _paintRope(canvas, path, visibleTop, visibleBottom);
 
-    _paintCheckpoints(canvas, size);
+    _paintCheckpoints(canvas, size, visibleTop, visibleBottom);
 
     for (var i = 0; i < nodes.length; i++) {
       final level = i + 1;
       final p = nodes[i];
+      if (!inView(p.dy)) continue;
       final isCurrent = level == current;
       final unlocked = _phaseUnlocked(level);
       final completed = (stars[level] ?? 0) > 0;
@@ -526,10 +602,12 @@ class LevelMapPainter extends CustomPainter {
 
   /// Paradas de vídeo na corda: hexágono do tamanho do círculo das fases —
   /// VERMELHO com ▶ enquanto pendente, VERDE com ✓ depois de assistida.
-  void _paintCheckpoints(Canvas canvas, Size size) {
-    final cps = checkpointPositions(size);
+  void _paintCheckpoints(
+      Canvas canvas, Size size, double visibleTop, double visibleBottom) {
+    final cps = checkpointPositions(size, horizonLevels);
     for (var k = 1; k <= cps.length; k++) {
       final p = cps[k - 1];
+      if (p.dy < visibleTop || p.dy > visibleBottom) continue;
       final cleared = checkpoints.contains(k);
       final reachable =
           unlockAll || completedStreak >= k * kCheckpointEvery;
@@ -546,8 +624,12 @@ class LevelMapPainter extends CustomPainter {
     }
   }
 
-  /// Corda de cânhamo: fio com contorno + tranças diagonais curtas.
-  void _paintRope(Canvas canvas, Path path) {
+  /// Corda de cânhamo: fio com contorno + tranças diagonais curtas. O fio
+  /// em si é um único `drawPath` (barato mesmo sendo comprido); só as
+  /// tranças (uma linha a cada ~7,5px) são cortadas pela janela visível,
+  /// já que são centenas ao longo do mapa inteiro.
+  void _paintRope(
+      Canvas canvas, Path path, double visibleTop, double visibleBottom) {
     const halfW = 5.5;
 
     final outline = Paint()
@@ -573,6 +655,9 @@ class LevelMapPainter extends CustomPainter {
       for (var d = 4.0; d + 4 < metric.length; d += 7.5) {
         final t = metric.getTangentForOffset(d);
         if (t == null) continue;
+        if (t.position.dy < visibleTop || t.position.dy > visibleBottom) {
+          continue;
+        }
         final dir = t.vector;
         final n = Offset(-dir.dy, dir.dx);
         canvas.drawLine(
@@ -585,14 +670,20 @@ class LevelMapPainter extends CustomPainter {
   }
 
   /// Fundo de ladrilhos hexagonais suaves com clareiras e árvores flat
-  /// (longe da trilha para não competir com os nós).
-  void _paintHexBackground(Canvas canvas, Size size, List<Offset> nodes) {
+  /// (longe da trilha para não competir com os nós). Só desenha as linhas
+  /// de hexágonos dentro da janela visível — o mapa inteiro tem milhares
+  /// de pixels de altura, então desenhar tudo sempre é o maior custo da
+  /// tela de seleção de fases.
+  void _paintHexBackground(Canvas canvas, Size size, List<Offset> nodes,
+      double visibleTop, double visibleBottom) {
     const s = 34.0;
+    const rowHeight = s * 1.5;
     final w = s * math.sqrt(3);
     final plain = Paint()..color = const Color(0xFFF3EEE1);
     final grass = Paint()..color = const Color(0xFFEAEDD8);
-    var row = 0;
-    for (var cy = 0.0; cy < size.height + s; cy += s * 1.5, row++) {
+    var row = (visibleTop / rowHeight).floor().clamp(0, 1 << 30);
+    final maxCy = math.min(size.height + s, visibleBottom);
+    for (var cy = row * rowHeight; cy < maxCy; cy += rowHeight, row++) {
       final xOff = row.isOdd ? w / 2 : 0.0;
       var col = 0;
       for (var cx = -w; cx < size.width + w; cx += w, col++) {
@@ -695,6 +786,7 @@ class LevelMapPainter extends CustomPainter {
   @override
   bool shouldRepaint(LevelMapPainter old) =>
       old.completedStreak != completedStreak ||
+      old.horizonLevels != horizonLevels ||
       old.unlockAll != unlockAll ||
       !setEquals(old.checkpoints, checkpoints) ||
       !mapEquals(old.stars, stars);
