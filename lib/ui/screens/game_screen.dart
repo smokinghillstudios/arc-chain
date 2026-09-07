@@ -321,7 +321,14 @@ class _GameScreenState extends State<GameScreen>
       final key = cur.key;
       final existing = _highlighted[key];
       if (existing != null) {
-        if (!existing.any((a) => a.idx == pIdx)) {
+        // Um mesmo traço (idx) pode já estar aceso por outra cadeia que
+        // passou por aqui antes — a cadeia atual é quem está de fato
+        // ocupando esse traço agora, então a cor dela substitui a antiga
+        // em vez de ser ignorada (senão o traço fica preso na cor errada).
+        final i = existing.indexWhere((a) => a.idx == pIdx);
+        if (i >= 0) {
+          existing[i] = ActiveArc(pIdx, ch.color);
+        } else {
           existing.add(ActiveArc(pIdx, ch.color));
         }
       } else {

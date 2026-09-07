@@ -96,9 +96,9 @@ const Set<int> _reliefGroups = {4, 9, 14};
 /// (ciclo, ver [_endlessChains]/[_endlessRows]/[_endlessCols]).
 const int _kRampEnd = 100;
 
-/// Teto de tabuleiro: 8 colunas × 10 linhas — acima disso fica ruim de
+/// Teto de tabuleiro: 7 colunas × 10 linhas — acima disso fica ruim de
 /// jogar (células pequenas demais / difícil de tocar com precisão).
-const int _maxCols = 8;
+const int _maxCols = 7;
 const int _maxRows = 10;
 
 /// Teto de toques máximos aceitável numa fase — `GameBoard.generate`
@@ -106,13 +106,14 @@ const int _maxRows = 10;
 const int kMaxAcceptableTaps = 50;
 
 /// Modo infinito (fases além de [_kRampEnd]): em vez de continuar travado
-/// no teto pra sempre, cadeias e tabuleiro oscilam juntos num ciclo de 8
-/// grupos de 5 fases (40 fases por volta completa) — índice = fase do
-/// ciclo (`eg % 8`). A fase 0 do ciclo bate com o teto da rampa (8×10, 5
-/// cadeias), então a virada 100→101 é suave, sem degrau.
+/// no teto pra sempre, cadeias e altura do tabuleiro oscilam juntas num
+/// ciclo de 8 grupos de 5 fases (40 fases por volta completa) — índice =
+/// fase do ciclo (`eg % 8`). A fase 0 do ciclo bate com o teto da rampa
+/// (7×10, 5 cadeias), então a virada 100→101 é suave, sem degrau. A
+/// largura já fica no teto (7) o tempo todo — só a altura oscila.
 const List<int> _endlessChains = [5, 4, 4, 3, 3, 4, 4, 5];
 const List<int> _endlessRows = [10, 9, 9, 8, 8, 9, 9, 10];
-const List<int> _endlessCols = [8, 8, 7, 7, 7, 7, 8, 8];
+const List<int> _endlessCols = [7, 7, 7, 7, 7, 7, 7, 7];
 
 /// Definição de uma fase, calculada sob demanda a partir do `id` — sem
 /// lista nem teto: fases 1–100 seguem a rampa original de sempre; a partir
@@ -148,26 +149,35 @@ LevelDef levelForId(int id) {
 /// Piso mínimo de `minTaps` (já sobre o custo real, ver
 /// `GameBoard._realMinTapsForChain`) por faixa de fase — garante que a
 /// fase nunca fique fácil demais mesmo quando a seed sorteia um caminho
-/// curto. Fases de 1 cadeia só num tabuleiro pequeno têm um teto real de
-/// ~2 toques (o tabuleiro é toroidal — sempre existe um atalho curto pra
-/// uma única cadeia) — pedir mais que isso faria `GameBoard.generate`
-/// esgotar as 300 tentativas sempre à toa, então o piso respeita esse
-/// teto quando há só 1 cadeia.
+/// curto. Fases com poucas cadeias num tabuleiro pequeno têm um teto real
+/// mais baixo (o tabuleiro é toroidal — sempre existe um atalho curto
+/// quando há pouca coisa disputando espaço) — pedir mais que isso faria
+/// `GameBoard.generate` esgotar as 300 tentativas sempre à toa, então o
+/// piso respeita esse teto por quantidade de cadeias.
 int minTapsFloor(int id, int chains) {
   if (id <= 3) return 1;
   final base = id <= 20 ? 3 : 5;
-  return chains == 1 ? (base < 2 ? base : 2) : base;
+  final chainCap = switch (chains) {
+    1 => 2,
+    2 => 4,
+    _ => base,
+  };
+  return base < chainCap ? base : chainCap;
 }
 
-/// (linha, lado) de onde cada cadeia começa, por quantidade de cadeias —
-/// linha: 0=topo, 1=centro, 2=base; lado: 0=esquerda, 1=direita.
+/// (posição de linha, lado) de onde cada cadeia começa, por quantidade de
+/// cadeias — posição de linha: um "slot" de 0 (topo) a 4 (base), lado:
+/// 0=esquerda, 1=direita. Duas cadeias em lados opostos (colunas opostas)
+/// nunca dividem o mesmo slot — se dividissem, cairiam na mesma linha do
+/// tabuleiro (ver `startRow` em `GameBoard.generate`), o que confunde
+/// visualmente qual início pertence a qual cadeia.
 const List<List<(int, int)>> _startLayouts = [
   [],
-  [(1, 0)], // 1: esquerda centro
-  [(1, 0), (1, 1)], // 2: esquerda centro, direita centro
-  [(0, 0), (1, 1), (2, 0)], // 3: esquerda alto, direita centro, esquerda baixo
-  [(0, 0), (0, 1), (2, 0), (2, 1)], // 4: os 4 cantos
-  [(0, 0), (0, 1), (1, 0), (2, 0), (2, 1)], // 5: topo×2, esquerda-centro, base×2
+  [(2, 0)], // 1: esquerda centro
+  [(1, 0), (3, 1)], // 2: esquerda meio-alto, direita meio-baixo
+  [(0, 0), (2, 1), (4, 0)], // 3: esquerda topo, direita centro, esquerda base
+  [(0, 0), (1, 1), (3, 0), (4, 1)], // 4: os 4 cantos, lado oposto sempre 1 slot adiante
+  [(0, 0), (1, 1), (2, 0), (3, 0), (4, 1)], // 5: topo×2, esquerda-centro, base×2
 ];
 
 class Pos {
@@ -386,12 +396,8 @@ class GameBoard {
     final reservedStarts = <Pos>[];
     final reservedEnds = <Pos>[];
     for (var i = 0; i < numChains; i++) {
-      final (rowPos, colSide) = startLayout[i];
-      final startRow = switch (rowPos) {
-        0 => 0,
-        2 => rows - 1,
-        _ => rows ~/ 2,
-      };
+      final (slot, colSide) = startLayout[i];
+      final startRow = (slot * (rows - 1) / 4).round();
       final startCol = colSide == 0 ? 0 : cols - 1;
       reservedStarts.add(Pos(startRow, startCol));
       reservedEnds.add(Pos(rowFor(numChains - 1 - i), farColumn));

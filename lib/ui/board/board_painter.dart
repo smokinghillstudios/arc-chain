@@ -187,7 +187,12 @@ class BoardPainter extends CustomPainter {
       }
 
       final passes = <Paint>[];
-      if (!anyActive) {
+      // Numa célula 'D' os dois traços (horizontal/vertical) são conexões
+      // independentes — uma cadeia acender um não deve "sujar" a cor do
+      // outro, então o traço parado sempre usa o estilo neutro normal,
+      // não o apagado (esse sim é só entre os 2 arcos de uma mesma
+      // orientação A/B, que competem pela mesma conexão).
+      if (!anyActive || (type == 'D' && activeArc == null)) {
         passes.add(Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = s * 0.14
