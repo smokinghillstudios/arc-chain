@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../audio/music.dart';
-import '../../core/engine.dart';
 import '../theme.dart';
-import '../widgets/arc_ring.dart';
 import 'level_map_screen.dart';
 
-/// Tela de título — mesmo estilo minimalista do ARCO: fundo claro,
-/// tipografia espaçada e um anel de arcos segmentado como logo, nas
-/// cores das cadeias do Arc Chain.
+/// Tela de título — fundo claro, tipografia espaçada e o próprio ícone
+/// do app (o mesmo que aparece na tela inicial do aparelho) como logo.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -35,42 +32,26 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             children: [
               const Spacer(flex: 5),
-              // Logo: anel de arcos nas cores das cadeias com o título dentro.
-              SizedBox(
-                width: 240,
-                height: 240,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const Positioned.fill(
-                      child: CustomPaint(painter: _ArcRingPainter()),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'ARC',
-                          style: TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 8,
-                            height: 1.05,
-                            color: ink.withValues(alpha: 0.92),
-                          ),
-                        ),
-                        Text(
-                          'CHAIN',
-                          style: TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 8,
-                            height: 1.05,
-                            color: ink.withValues(alpha: 0.92),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              // Logo: o próprio ícone do app, igual ao da tela inicial do
+              // aparelho — mesma imagem usada por flutter_launcher_icons.
+              ClipRRect(
+                borderRadius: BorderRadius.circular(36),
+                child: Image.asset(
+                  'assets/icon/icon.png',
+                  width: 176,
+                  height: 176,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'ARC CHAIN',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 6,
+                  height: 1.05,
+                  color: ink.withValues(alpha: 0.92),
                 ),
               ),
               const Spacer(flex: 3),
@@ -102,19 +83,4 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-}
-
-/// Anel de arcos segmentados nas cores das cadeias — o motivo do jogo
-/// destilado num único símbolo (mesmo logo da splash do ARCO).
-class _ArcRingPainter extends CustomPainter {
-  const _ArcRingPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    paintArcRing(canvas, size.center(Offset.zero), size.width,
-        colors: chainColors);
-  }
-
-  @override
-  bool shouldRepaint(_ArcRingPainter oldDelegate) => false;
 }

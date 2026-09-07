@@ -64,6 +64,7 @@ flutter:
   assets:
     - assets/sfx/
     - assets/music/
+    - assets/icon/
 
   fonts:
     - family: Nunito
