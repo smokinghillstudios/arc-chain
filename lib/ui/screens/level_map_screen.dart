@@ -12,7 +12,6 @@ import '../overlays/game_dialogs.dart' show kSimulatedAdSeconds;
 import '../overlays/phase_detail_dialog.dart';
 import '../theme.dart';
 import '../widgets/arc_ring.dart';
-import '../widgets/audio_toggle_button.dart';
 import '../widgets/hex_badge.dart';
 import 'game_screen.dart';
 
@@ -201,55 +200,74 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
     }
   }
 
+  Future<void> _openTrophies() async {
+    // Sala de troféus ainda não existe — só o ponto de entrada, por
+    // enquanto um aviso simples.
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: const Color(0xFFFAFAF8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.emoji_events_rounded,
+                  size: 40, color: ink.withValues(alpha: 0.35)),
+              const SizedBox(height: 14),
+              Text('Troféus em breve',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: ink.withValues(alpha: 0.85),
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: paper,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.arrow_back_rounded,
-                        color: ink.withValues(alpha: 0.55)),
-                  ),
-                  AudioToggleButton(
-                    enabled: _musicOn,
-                    iconOn: Icons.music_note,
-                    iconOff: Icons.music_off,
-                    tooltip: _musicOn ? 'Desligar música' : 'Ligar música',
-                    onTap: _toggleMusic,
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scroll,
-                child: GestureDetector(
-                  onTapUp: _onTapUp,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: mapHeightFor(_horizonLevels),
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: LevelMapPainter(
-                          completedStreak: _completedStreak,
-                          scroll: _scroll,
-                          horizonLevels: _horizonLevels,
-                          stars: Map.of(_stars),
-                          checkpoints: Set.of(_checkpoints),
-                          unlockAll: debugUnlockAllLevels,
-                        ),
+            SingleChildScrollView(
+              controller: _scroll,
+              child: GestureDetector(
+                onTapUp: _onTapUp,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: mapHeightFor(_horizonLevels),
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: LevelMapPainter(
+                        completedStreak: _completedStreak,
+                        scroll: _scroll,
+                        horizonLevels: _horizonLevels,
+                        stars: Map.of(_stars),
+                        checkpoints: Set.of(_checkpoints),
+                        unlockAll: debugUnlockAllLevels,
                       ),
                     ),
                   ),
                 ),
+              ),
+            ),
+            // Balões flutuantes fixos (não rolam com o mapa), de cima pra
+            // baixo: voltar, música, troféus — mesmo padrão do ARCO.
+            Positioned(
+              left: 16,
+              top: 14,
+              child: _FloatingBalloons(
+                musicOn: _musicOn,
+                onBack: () => Navigator.of(context).pop(),
+                onMusic: _toggleMusic,
+                onTrophies: _openTrophies,
               ),
             ),
           ],
@@ -882,6 +900,92 @@ class _CheckpointDialogState extends State<_CheckpointDialog> {
                   color: inkMuted,
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// Coluna fixa de balões flutuantes no canto superior esquerdo do mapa —
+/// voltar, música, troféus, nessa ordem (porte do `_FloatingBalloons` do
+/// ARCO, sem o botão de survival — não existe modo survival no Arc Chain).
+class _FloatingBalloons extends StatelessWidget {
+  final bool musicOn;
+  final VoidCallback onBack;
+  final VoidCallback onMusic;
+  final VoidCallback onTrophies;
+
+  const _FloatingBalloons({
+    required this.musicOn,
+    required this.onBack,
+    required this.onMusic,
+    required this.onTrophies,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _MapBalloonButton(
+          icon: Icons.arrow_back_rounded,
+          tooltip: 'Voltar',
+          onTap: onBack,
+        ),
+        const SizedBox(height: 14),
+        _MapBalloonButton(
+          icon: musicOn ? Icons.music_note : Icons.music_off,
+          tooltip: musicOn ? 'Desligar música' : 'Ligar música',
+          onTap: onMusic,
+          active: musicOn,
+        ),
+        const SizedBox(height: 14),
+        _MapBalloonButton(
+          icon: Icons.emoji_events_rounded,
+          tooltip: 'Troféus',
+          onTap: onTrophies,
+        ),
+      ],
+    );
+  }
+}
+
+/// Botão circular flutuante — 48px, fundo quase branco com sombra (ou
+/// [headerDark] quando [active], mesmo tom do `AudioToggleButton` ligado).
+/// Porte do `_MapBalloonButton` do ARCO.
+class _MapBalloonButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool active;
+
+  const _MapBalloonButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.active = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active ? headerDark : Colors.white.withValues(alpha: 0.94),
+        shape: const CircleBorder(),
+        elevation: 4,
+        shadowColor: Colors.black.withValues(alpha: 0.28),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(
+              icon,
+              size: 22,
+              color: active ? Colors.white : ink.withValues(alpha: 0.55),
+            ),
+          ),
+        ),
       ),
     );
   }
