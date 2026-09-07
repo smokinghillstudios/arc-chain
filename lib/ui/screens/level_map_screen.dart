@@ -7,13 +7,17 @@ import 'package:flutter/material.dart';
 import '../../ads/ads_service.dart';
 import '../../audio/music.dart';
 import '../../controller/progress.dart';
+import '../../controller/trophy_service.dart';
 import '../../core/engine.dart';
 import '../overlays/game_dialogs.dart' show kSimulatedAdSeconds;
 import '../overlays/phase_detail_dialog.dart';
+import '../overlays/trophy_dialog.dart';
 import '../theme.dart';
 import '../widgets/arc_ring.dart';
 import '../widgets/hex_badge.dart';
+import '../widgets/map_balloon_button.dart';
 import 'game_screen.dart';
+import 'trophy_room_screen.dart';
 
 /// Desbloqueia todas as fases para testar. Ativo apenas em builds debug
 /// (release mantém a progressão normal) — mesma decisão do ARCO.
@@ -46,18 +50,17 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
   /// `Music.instance.enabled`).
   late bool _musicOn = Music.instance.enabled;
 
+  /// Há troféu desbloqueado ainda não visto na sala de troféus — acende o
+  /// pontinho no balão de entrada.
+  late bool _hasUnseenTrophies = Progress.instance.unlockedTrophies
+      .difference(Progress.instance.seenTrophyIds)
+      .isNotEmpty;
+
   Map<int, int> get _stars => Progress.instance.best;
 
-  /// Fases concluídas em sequência a partir da 1 (progressão da trilha).
-  /// Sem teto real — só para no primeiro buraco de progresso; o `1 << 20`
-  /// é só uma trava de segurança contra dado salvo corrompido.
-  int get _completedStreak {
-    var n = 0;
-    while (n < (1 << 20) && (_stars[n + 1] ?? 0) > 0) {
-      n++;
-    }
-    return n;
-  }
+  /// Fases concluídas em sequência a partir da 1 (progressão da trilha) —
+  /// mesma conta usada pelo troféu `campaign` (ver `Progress.completedStreak`).
+  int get _completedStreak => Progress.instance.completedStreak;
 
   Set<int> get _checkpoints => Progress.instance.checkpoints;
 
@@ -196,37 +199,25 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
     final watched = await showCheckpointDialog(context);
     if (watched == true && mounted) {
       setState(() => _checkpoints.add(k));
-      Progress.instance.saveCheckpoints();
+      await Progress.instance.saveCheckpoints();
+      final newTrophies = await checkAndPersistTrophies();
+      if (!mounted) return;
+      setState(() => _hasUnseenTrophies = _hasUnseenTrophies || newTrophies.isNotEmpty);
+      if (newTrophies.isNotEmpty) {
+        await showTrophyUnlockedDialog(context, ids: newTrophies);
+      }
     }
   }
 
   Future<void> _openTrophies() async {
-    // Sala de troféus ainda não existe — só o ponto de entrada, por
-    // enquanto um aviso simples.
-    await showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: const Color(0xFFFAFAF8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.emoji_events_rounded,
-                  size: 40, color: ink.withValues(alpha: 0.35)),
-              const SizedBox(height: 14),
-              Text('Troféus em breve',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: ink.withValues(alpha: 0.85),
-                  )),
-            ],
-          ),
-        ),
-      ),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const TrophyRoomScreen()));
+    if (!mounted) return;
+    setState(() {
+      _hasUnseenTrophies = Progress.instance.unlockedTrophies
+          .difference(Progress.instance.seenTrophyIds)
+          .isNotEmpty;
+    });
   }
 
   @override
@@ -265,6 +256,7 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
               top: 14,
               child: _FloatingBalloons(
                 musicOn: _musicOn,
+                hasUnseenTrophies: _hasUnseenTrophies,
                 onBack: () => Navigator.of(context).pop(),
                 onMusic: _toggleMusic,
                 onTrophies: _openTrophies,
@@ -910,12 +902,14 @@ class _CheckpointDialogState extends State<_CheckpointDialog> {
 /// ARCO, sem o botão de survival — não existe modo survival no Arc Chain).
 class _FloatingBalloons extends StatelessWidget {
   final bool musicOn;
+  final bool hasUnseenTrophies;
   final VoidCallback onBack;
   final VoidCallback onMusic;
   final VoidCallback onTrophies;
 
   const _FloatingBalloons({
     required this.musicOn,
+    required this.hasUnseenTrophies,
     required this.onBack,
     required this.onMusic,
     required this.onTrophies,
@@ -925,68 +919,26 @@ class _FloatingBalloons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _MapBalloonButton(
+        MapBalloonButton(
           icon: Icons.arrow_back_rounded,
           tooltip: 'Voltar',
           onTap: onBack,
         ),
         const SizedBox(height: 14),
-        _MapBalloonButton(
+        MapBalloonButton(
           icon: musicOn ? Icons.music_note : Icons.music_off,
           tooltip: musicOn ? 'Desligar música' : 'Ligar música',
           onTap: onMusic,
           active: musicOn,
         ),
         const SizedBox(height: 14),
-        _MapBalloonButton(
+        MapBalloonButton(
           icon: Icons.emoji_events_rounded,
           tooltip: 'Troféus',
           onTap: onTrophies,
+          showDot: hasUnseenTrophies,
         ),
       ],
-    );
-  }
-}
-
-/// Botão circular flutuante — 48px, fundo quase branco com sombra (ou
-/// [headerDark] quando [active], mesmo tom do `AudioToggleButton` ligado).
-/// Porte do `_MapBalloonButton` do ARCO.
-class _MapBalloonButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  final bool active;
-
-  const _MapBalloonButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    this.active = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: active ? headerDark : Colors.white.withValues(alpha: 0.94),
-        shape: const CircleBorder(),
-        elevation: 4,
-        shadowColor: Colors.black.withValues(alpha: 0.28),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Icon(
-              icon,
-              size: 22,
-              color: active ? Colors.white : ink.withValues(alpha: 0.55),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

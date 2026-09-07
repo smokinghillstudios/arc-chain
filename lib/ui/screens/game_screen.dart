@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,11 +9,13 @@ import '../../ads/ads_service.dart';
 import '../../audio/music.dart';
 import '../../audio/sfx.dart';
 import '../../controller/progress.dart';
+import '../../controller/trophy_service.dart';
 import '../../core/engine.dart';
 import '../board/board_painter.dart';
 import '../widgets/app_background.dart';
 import '../widgets/hud_top.dart';
 import '../overlays/game_dialogs.dart';
+import '../overlays/trophy_dialog.dart';
 
 const int animDelayMs = 100;
 
@@ -50,6 +53,11 @@ class _GameScreenState extends State<GameScreen>
 
   /// Toques extras ganhos por vídeo premiado.
   int _extraTaps = 0;
+
+  /// Verdadeiro se o jogador aceitou o vídeo de toques extra nesta mesma
+  /// tentativa — vitória depois disso conta pro troféu `comeback`. Zerado
+  /// a cada tentativa nova (`_startLevel`/`_resetBoard`), não persistido.
+  bool _usedVideoThisAttempt = false;
 
   /// Banner do topo (espaço reservado mesmo enquanto carrega).
   BannerAd? _banner;
@@ -128,6 +136,7 @@ class _GameScreenState extends State<GameScreen>
     _stars = 0;
     _showNext = false;
     _extraTaps = 0;
+    _usedVideoThisAttempt = false;
     _highlighted.clear();
     _particles.clear();
     Sfx.instance.start();
@@ -365,16 +374,37 @@ class _GameScreenState extends State<GameScreen>
     Sfx.instance.win();
     if (mounted) setState(() {});
 
+    // "De primeira" (troféu `flawless`): 1ª vez que esta fase é concluída
+    // e nunca foi perdida antes — checado ANTES de atualizar `best` e
+    // `everLost` abaixo.
+    final isFirstClear = Progress.instance.best[_level.id] == null;
+    final wasFlawless = !Progress.instance.everLost.contains(_level.id);
+
     final prev = Progress.instance.best[_level.id] ?? 0;
     if (_stars > prev) {
       Progress.instance.best[_level.id] = _stars;
       await Progress.instance.save();
+    }
+    if (isFirstClear && wasFlawless) {
+      Progress.instance.flawlessFirstClears++;
+      await Progress.instance.saveFlawlessFirstClears();
+    }
+    Progress.instance.everLost.remove(_level.id);
+    unawaited(Progress.instance.saveEverLost());
+    if (_usedVideoThisAttempt) {
+      Progress.instance.comebackWins++;
+      await Progress.instance.saveComebackWins();
     }
 
     // Deixa o confete brilhar antes do diálogo de vitória.
     await Future.delayed(const Duration(milliseconds: 1100));
     if (!mounted || !_showNext) return; // fase reiniciada nesse meio tempo
     final action = await showVictoryDialog(context, stars: _stars);
+    if (!mounted) return;
+    final newTrophies = await checkAndPersistTrophies();
+    if (newTrophies.isNotEmpty && mounted) {
+      await showTrophyUnlockedDialog(context, ids: newTrophies);
+    }
     if (!mounted) return;
     switch (action) {
       case VictoryAction.retry:
@@ -455,6 +485,12 @@ class _GameScreenState extends State<GameScreen>
   Future<void> _offerExtraTaps() async {
     if (!mounted || !_boardLocked || _showNext) return;
 
+    // Derrota confirmada (o toque final não salvou a fase) — conta pro
+    // troféu `flawless`: se essa fase vier a ser vencida, não vai ser "de
+    // primeira" (ver `_onLevelComplete`).
+    Progress.instance.everLost.add(_level.id);
+    unawaited(Progress.instance.saveEverLost());
+
     final action = await showDefeatDialog(context);
     if (!mounted) return;
     switch (action) {
@@ -462,6 +498,7 @@ class _GameScreenState extends State<GameScreen>
         setState(() {
           _extraTaps += kDefeatExtraTaps;
           _boardLocked = false;
+          _usedVideoThisAttempt = true;
         });
       case DefeatAction.retry:
         _resetBoard();
@@ -478,6 +515,7 @@ class _GameScreenState extends State<GameScreen>
     _stars = 0;
     _showNext = false;
     _extraTaps = 0;
+    _usedVideoThisAttempt = false;
     setState(() {});
     _runAllChains();
   }

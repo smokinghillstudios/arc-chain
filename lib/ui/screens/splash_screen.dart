@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../audio/music.dart';
+import '../../controller/progress.dart';
 import '../theme.dart';
+import 'daily_visit_screen.dart';
 import 'level_map_screen.dart';
 
 /// Tela de título — fundo claro, tipografia espaçada e o próprio ícone
@@ -61,9 +63,19 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: ink,
                 shape: const CircleBorder(),
                 child: InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const LevelMapScreen()),
-                  ),
+                  onTap: () {
+                    // Visita diária só na 1ª abertura de um novo dia civil
+                    // — o resto do dia vai direto pro mapa.
+                    final isNewDay = Progress.instance.lastVisitDate !=
+                        dailyDateStr(DateTime.now());
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => isNewDay
+                            ? const DailyVisitScreen()
+                            : const LevelMapScreen(),
+                      ),
+                    );
+                  },
                   customBorder: const CircleBorder(),
                   child: SizedBox(
                     width: 64,
