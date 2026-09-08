@@ -6,6 +6,10 @@ import '../theme.dart';
 import 'daily_visit_screen.dart';
 import 'level_map_screen.dart';
 
+/// Versão exibida na splash — mantida manualmente em sincronia com
+/// `version:` no pubspec.yaml (sem pacote de version info só por isto).
+const kAppVersion = '1.0.0';
+
 /// Tela de título — fundo claro, tipografia espaçada e o próprio ícone
 /// do app (o mesmo que aparece na tela inicial do aparelho) como logo.
 class SplashScreen extends StatefulWidget {
@@ -88,7 +92,18 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                 ),
               ),
-              const Spacer(flex: 4),
+              const Spacer(flex: 3),
+              Text(
+                'v$kAppVersion',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: inkMuted,
+                ),
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),

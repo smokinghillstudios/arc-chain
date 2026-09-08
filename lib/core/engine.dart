@@ -105,6 +105,12 @@ const int _maxRows = 10;
 /// tenta várias vezes até achar um tabuleiro dentro desse limite.
 const int kMaxAcceptableTaps = 50;
 
+/// Piso de `maxTaps` (o teto de toques da fase, que também é o "toques
+/// para 1★") — fases muito curtas (poucas cadeias, tabuleiro pequeno)
+/// podiam ter só 4-5 toques de folga antes de perder, o que passa rápido
+/// demais mesmo pra 1 estrela. Nenhuma fase fica abaixo disso.
+const int kMinMaxTaps = 10;
+
 /// Modo infinito (fases além de [_kRampEnd]): em vez de continuar travado
 /// no teto pra sempre, cadeias e altura do tabuleiro oscilam juntas num
 /// ciclo de 8 grupos de 5 fases (40 fases por volta completa) — índice =
@@ -556,7 +562,9 @@ class GameBoard {
       }
     }
 
-    final maxTaps = minTaps + [3, (minTaps * 0.5).ceil()].reduce((a, b) => a > b ? a : b);
+    final maxTapsRaw =
+        minTaps + [3, (minTaps * 0.5).ceil()].reduce((a, b) => a > b ? a : b);
+    final maxTaps = maxTapsRaw < kMinMaxTaps ? kMinMaxTaps : maxTapsRaw;
     return GameBoard._(rows, cols, grid, chains, minTaps, maxTaps);
   }
 }

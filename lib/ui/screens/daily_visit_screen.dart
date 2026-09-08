@@ -50,6 +50,7 @@ class DailyVisitScreen extends StatefulWidget {
 class _DailyVisitScreenState extends State<DailyVisitScreen> {
   bool _loaded = false;
   int _consecutiveDays = 1;
+  int _totalDaysPlayed = 1;
   bool _broken = false;
   int _previousConsecutiveDays = 1;
   bool _brokenAnimDone = true;
@@ -85,6 +86,7 @@ class _DailyVisitScreenState extends State<DailyVisitScreen> {
     if (!mounted) return;
     setState(() {
       _consecutiveDays = newConsecutive;
+      _totalDaysPlayed = p.totalDaysPlayed;
       _previousConsecutiveDays = previous.clamp(1, 1 << 30);
       _broken = broken;
       _brokenAnimDone = !broken;
@@ -133,16 +135,16 @@ class _DailyVisitScreenState extends State<DailyVisitScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.local_fire_department_rounded,
-                            size: 30, color: Color(0xFFE0883C)),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$_consecutiveDays',
-                          style: TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            color: ink.withValues(alpha: 0.92),
-                          ),
+                        _StatPill(
+                          icon: Icons.local_fire_department_rounded,
+                          iconColor: const Color(0xFFE0883C),
+                          value: _consecutiveDays,
+                        ),
+                        const SizedBox(width: 22),
+                        _StatPill(
+                          icon: Icons.calendar_month_rounded,
+                          iconColor: inkMuted,
+                          value: _totalDaysPlayed,
                         ),
                       ],
                     ),
@@ -166,6 +168,35 @@ class _DailyVisitScreenState extends State<DailyVisitScreen> {
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// Um contador com ícone — usado para o streak (dias seguidos, 🔥) e o
+/// total de dias jogados (📅), lado a lado.
+class _StatPill extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final int value;
+  const _StatPill(
+      {required this.icon, required this.iconColor, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 26, color: iconColor),
+        const SizedBox(width: 6),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            color: ink.withValues(alpha: 0.92),
+          ),
+        ),
+      ],
     );
   }
 }

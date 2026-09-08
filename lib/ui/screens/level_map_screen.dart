@@ -162,7 +162,15 @@ class _LevelMapScreenState extends State<LevelMapScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => GameScreen(level: def)),
     );
-    if (mounted) setState(() {}); // atualiza estrelas/progressão ao voltar
+    if (!mounted) return;
+    setState(() {
+      // Atualiza estrelas/progressão ao voltar, e o pontinho de troféu
+      // caso a vitória tenha desbloqueado algum (GameScreen já persistiu,
+      // só falta esse balão saber).
+      _hasUnseenTrophies = Progress.instance.unlockedTrophies
+          .difference(Progress.instance.seenTrophyIds)
+          .isNotEmpty;
+    });
   }
 
   void _onTapUp(TapUpDetails details) {
